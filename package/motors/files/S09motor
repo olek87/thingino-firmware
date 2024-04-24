@@ -4,12 +4,12 @@ gpio_motor_h=$(fw_printenv -n gpio_motor_h)
 gpio_motor_v=$(fw_printenv -n gpio_motor_v)
 motor_h_maxstep=$(fw_printenv -n motor_maxstep_h)
 motor_v_maxstep=$(fw_printenv -n motor_maxstep_v)
+motors_config=/etc/motors.pos
 
-check_return() {
-	if [ $1 -ne 0 ]; then
-		echo "err: $2"
-		exit 1
-	fi
+die() {
+	echo "FAIL"
+	echo "Error: $1"
+	exit 1
 }
 
 check_module() {
@@ -45,26 +45,27 @@ start() {
 		exit 0
 	fi
 
-	# Check for errors after caching command results
-	check_return $? "Failed to get initial configuration"
-
 	# Set GPIO variables
-	set_gpio_vars "$gpio_motor_h" "h"
-	check_return $? "Failed to set horizontal GPIO variables"
-
-	set_gpio_vars "$gpio_motor_v" "v"
-	check_return $? "Failed to set vertical GPIO variables"
+	set_gpio_vars "$gpio_motor_h" "h" || die "Failed to set horizontal GPIO variables"
+	set_gpio_vars "$gpio_motor_v" "v" || die "Failed to set vertical GPIO variables"
 
 	# Check if the module is already loaded
 	check_module motor sample_motor
 
 	modprobe motor hmaxstep=$motor_h_maxstep vmaxstep=$motor_v_maxstep \
 		hst1=$hst1 hst2=$hst2 hst3=$hst3 hst4=$hst4 \
-		vst1=$vst1 vst2=$vst2 vst3=$vst3 vst4=$vst4
-	check_return $? "Failed to load motor module for ingenic"
+		vst1=$vst1 vst2=$vst2 vst3=$vst3 vst4=$vst4 || die "Failed to load motor module for ingenic"
+
 	echo "OK"
+
 	# Initialize motor position upon successful module loading
-	motors -r > /dev/null 2>&1 &
+	cmd="motors -r"
+	if test -f $motors_config; then
+		x=$(sed -n 1p $motors_config)
+		y=$(sed -n 2p $motors_config)
+		cmd="$cmd && motors -d h -x $y -y $y"
+	fi
+	$cmd > /dev/null 2>&1 &
 }
 
 case "$1" in
